@@ -516,7 +516,7 @@ const Index = () => {
   return (
     <div
       ref={wrapperRef}
-      className="w-screen h-screen overflow-hidden cursor-none"
+      className={`w-screen h-screen overflow-hidden ${gameStarted && !showOnboarding ? 'cursor-none' : ''}`}
       style={{ background: "#04060a" }}
     >
       <canvas ref={canvasRef} className="block w-full h-full" />
