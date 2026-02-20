@@ -6,6 +6,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Atom, GameParams, BroadcastMessage } from "@/lib/types";
 import { DEFAULT_PARAMS } from "@/lib/types";
 import { latLonToXY, pixelDistance } from "@/lib/geo";
@@ -76,6 +77,7 @@ function playEntangleSound() {
 }
 
 const Index = () => {
+  const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [params, setParams] = useState<GameParams>(DEFAULT_PARAMS);
@@ -547,6 +549,22 @@ const Index = () => {
             <div className="text-[9px]" style={{ color: "rgba(58,80,104,0.5)" }}>
               room: rydberg-room://local · mode: {Array.from(peerAtomsRef.current.keys()).length > 0 ? "multi-tab" : "single-tab demo"}
             </div>
+            <button
+              onClick={() => navigate("/map")}
+              className="mt-2 text-[9px] font-bold tracking-wider px-3 py-1.5 rounded transition-all"
+              style={{
+                border: "1px solid var(--game-accent-blue)",
+                color: "var(--game-accent-blue)",
+                background: "rgba(0,212,255,0.05)",
+                fontFamily: "var(--font-display)",
+                letterSpacing: "0.15em",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,212,255,0.12)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,212,255,0.05)")}
+            >
+              📍 GPS MAP
+            </button>
           </div>
         </>
       )}
