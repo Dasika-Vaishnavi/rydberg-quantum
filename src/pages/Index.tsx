@@ -31,6 +31,7 @@ import StatusHUD from "@/components/StatusHUD";
 import InfoPopup, { type PopupType } from "@/components/InfoPopup";
 import InfoCard from "@/components/InfoCard";
 import EventFeed, { type GameEvent, createEvent } from "@/components/EventFeed";
+import GuidedPrompts, { type GameMilestone } from "@/components/GuidedPrompts";
 
 type IntroPhase = "loading" | "locating" | "trapped" | "deploy" | "ready";
 
@@ -86,6 +87,13 @@ const Index = () => {
   const [gameStarted, setGameStarted] = useState(false);
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [loadingText, setLoadingText] = useState("initializing optical trap...");
+  const [milestone, setMilestone] = useState<GameMilestone>("start");
+  const [introPhaseState, setIntroPhaseState] = useState<string>("loading");
+  const hasMovedRef = useRef(false);
+  const hasExcitedRef = useRef(false);
+  const hasEntangledRef = useRef(false);
+  const hasDecayedRef = useRef(false);
+  const mouseMoveCountRef = useRef(0);
 
   const shownPopups = useRef<Set<string>>(new Set());
   const myId = useMemo(() => `user-${Math.random().toString(36).slice(2, 8)}`, []);
@@ -150,6 +158,12 @@ const Index = () => {
     shakeRef.current = { active: true, elapsed: 0 };
 
     addEvent("⚡ you entered rydberg state", "rydberg");
+
+    // Milestone: first excite → advance to find_target
+    if (!hasExcitedRef.current) {
+      hasExcitedRef.current = true;
+      setMilestone("find_target");
+    }
 
     if (!shownPopups.current.has("excite")) {
       shownPopups.current.add("excite");
@@ -226,6 +240,11 @@ const Index = () => {
 
     const onMouseMove = (e: MouseEvent) => {
       mouseRef.current = { x: e.clientX, y: e.clientY };
+      mouseMoveCountRef.current++;
+      if (mouseMoveCountRef.current === 15 && !hasExcitedRef.current) {
+        hasMovedRef.current = true;
+        setMilestone("excite");
+      }
     };
     window.addEventListener("mousemove", onMouseMove);
 
@@ -283,9 +302,13 @@ const Index = () => {
       const elapsed = Date.now() - introStartRef.current;
       const phase = introPhaseRef.current;
 
-      if (phase === "locating" && elapsed > 2000) introPhaseRef.current = "trapped";
-      else if (phase === "trapped" && elapsed > 3500) introPhaseRef.current = "deploy";
-      else if (phase === "deploy" && elapsed > 5000) introPhaseRef.current = "ready";
+      if (phase === "locating" && elapsed > 2000) { introPhaseRef.current = "trapped"; setIntroPhaseState("trapped"); }
+      else if (phase === "trapped" && elapsed > 3500) { introPhaseRef.current = "deploy"; setIntroPhaseState("deploy"); setMilestone("start"); }
+      else if (phase === "deploy" && elapsed > 5000) {
+        introPhaseRef.current = "ready";
+        setIntroPhaseState("ready");
+        if (!hasMovedRef.current && !hasExcitedRef.current) setMilestone("move");
+      }
 
       const currentPhase = introPhaseRef.current;
 
@@ -367,6 +390,14 @@ const Index = () => {
       allAtoms = updateAtomTimers(allAtoms, dt, p);
       userAtomRef.current = allAtoms[0];
 
+      // Detect user decay back to ground → milestone
+      if (allAtoms[0].state === "ground" && hasExcitedRef.current && !hasEntangledRef.current && !hasDecayedRef.current) {
+        hasDecayedRef.current = true;
+        setMilestone("decayed");
+        // After 3s, go back to find_target
+        setTimeout(() => { if (!hasEntangledRef.current) setMilestone("find_target"); }, 3000);
+      }
+
       // Check entanglement
       const prevUserState = allAtoms[0].state;
       allAtoms = checkEntanglement(allAtoms, p);
@@ -376,6 +407,14 @@ const Index = () => {
         playEntangleSound();
         entangleFlashRef.current = { active: true, progress: 0 };
         addEvent("🔴 you became entangled!", "entangle");
+
+        // Milestone: first entangle → celebrate, then free play
+        if (!hasEntangledRef.current) {
+          hasEntangledRef.current = true;
+          setMilestone("entangle");
+          setTimeout(() => setMilestone("free_play"), 6000);
+        }
+
         if (!shownPopups.current.has("entangle")) {
           shownPopups.current.add("entangle");
           setPopup("entangle");
@@ -491,6 +530,7 @@ const Index = () => {
           <ParamsPanel params={params} setParams={setParams} />
           <StatusHUD userAtom={hudAtom} atomCount={atomCount} nearbyLinks={nearbyLinks} onExcite={doExcite} />
           <EventFeed events={events} />
+          <GuidedPrompts milestone={milestone} atomState={hudAtom?.state ?? "ground"} introPhase={introPhaseState} />
 
           <InfoPopup type={popup} onDismiss={() => setPopup(null)} onLearnMore={() => setInfoOpen(true)} />
           <InfoCard open={infoOpen} onClose={() => setInfoOpen(false)} />
