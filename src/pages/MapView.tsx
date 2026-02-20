@@ -1,22 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { usePlayerSync } from "@/hooks/usePlayerSync";
-import "leaflet/dist/leaflet.css";
 
-// Recenter map when user geo arrives
-function RecenterMap({ lat, lon }: { lat: number; lon: number }) {
-  const map = useMap();
-  useEffect(() => {
-    if (lat !== 0 || lon !== 0) {
-      map.setView([lat, lon], 15);
-    }
-  }, [lat, lon, map]);
-  return null;
-}
-
-// Distance in km between two coords
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -38,80 +26,109 @@ const MapView = () => {
   const geo = useGeolocation();
   const [atomState] = useState("ground");
   const { players, sessionId } = usePlayerSync(geo.lat, geo.lon, atomState, geo.label);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const userMarkerRef = useRef<L.CircleMarker | null>(null);
+  const peerMarkersRef = useRef<Map<string, L.CircleMarker>>(new Map());
+  const centeredRef = useRef(false);
 
   const nearbyPlayers = useMemo(() => {
     if (geo.loading) return [];
     return players.filter((p) => {
       if (p.session_id === sessionId) return false;
-      return haversineKm(geo.lat, geo.lon, p.lat, p.lon) < 5; // 5km radius
+      return haversineKm(geo.lat, geo.lon, p.lat, p.lon) < 5;
     });
   }, [players, geo, sessionId]);
 
-  const myPlayer = players.find((p) => p.session_id === sessionId);
+  // Init map
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+
+    const map = L.map(mapContainerRef.current, {
+      center: [37.7, -122.4],
+      zoom: 15,
+      zoomControl: false,
+    });
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+    }).addTo(map);
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Center on user geo
+  useEffect(() => {
+    if (!mapRef.current || geo.loading || centeredRef.current) return;
+    if (geo.lat !== 0 || geo.lon !== 0) {
+      mapRef.current.setView([geo.lat, geo.lon], 15);
+      centeredRef.current = true;
+    }
+  }, [geo]);
+
+  // User marker
+  useEffect(() => {
+    if (!mapRef.current || geo.loading) return;
+
+    if (!userMarkerRef.current) {
+      userMarkerRef.current = L.circleMarker([geo.lat, geo.lon], {
+        radius: 12,
+        fillColor: "#ffd700",
+        fillOpacity: 0.9,
+        color: "#ffd700",
+        weight: 2,
+      })
+        .addTo(mapRef.current)
+        .bindPopup(`<b>YOU</b><br/>state: ${atomState}<br/>${geo.label}`);
+    } else {
+      userMarkerRef.current.setLatLng([geo.lat, geo.lon]);
+    }
+  }, [geo, atomState]);
+
+  // Peer markers
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const currentIds = new Set(nearbyPlayers.map((p) => p.id));
+
+    // Remove stale markers
+    peerMarkersRef.current.forEach((marker, id) => {
+      if (!currentIds.has(id)) {
+        marker.remove();
+        peerMarkersRef.current.delete(id);
+      }
+    });
+
+    // Add/update markers
+    nearbyPlayers.forEach((p) => {
+      const color = stateColors[p.atom_state] || "#e8f4f8";
+      const existing = peerMarkersRef.current.get(p.id);
+      if (existing) {
+        existing.setLatLng([p.lat, p.lon]);
+        existing.setStyle({ fillColor: color, color });
+      } else {
+        const marker = L.circleMarker([p.lat, p.lon], {
+          radius: 8,
+          fillColor: color,
+          fillOpacity: 0.8,
+          color,
+          weight: 1.5,
+        })
+          .addTo(mapRef.current!)
+          .bindPopup(`<b>${p.display_name}</b><br/>state: ${p.atom_state}`);
+        peerMarkersRef.current.set(p.id, marker);
+      }
+    });
+  }, [nearbyPlayers]);
 
   return (
     <div className="w-screen h-screen relative" style={{ background: "#04060a" }}>
-      {/* Map */}
-      <MapContainer
-        center={[geo.lat || 37.7, geo.lon || -122.4]}
-        zoom={15}
-        className="w-full h-full z-0"
-        style={{ background: "#04060a" }}
-        zoomControl={false}
-      >
-        <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-        />
-        <RecenterMap lat={geo.lat} lon={geo.lon} />
-
-        {/* Your atom */}
-        {!geo.loading && (
-          <CircleMarker
-            center={[geo.lat, geo.lon]}
-            radius={12}
-            pathOptions={{
-              fillColor: "#ffd700",
-              fillOpacity: 0.9,
-              color: "#ffd700",
-              weight: 2,
-            }}
-          >
-            <Popup>
-              <div style={{ fontFamily: "var(--font-mono)", color: "#04060a" }}>
-                <strong>YOU</strong>
-                <br />
-                state: {atomState}
-                <br />
-                {geo.label}
-              </div>
-            </Popup>
-          </CircleMarker>
-        )}
-
-        {/* Other players */}
-        {nearbyPlayers.map((p) => (
-          <CircleMarker
-            key={p.id}
-            center={[p.lat, p.lon]}
-            radius={8}
-            pathOptions={{
-              fillColor: stateColors[p.atom_state] || "#e8f4f8",
-              fillOpacity: 0.8,
-              color: stateColors[p.atom_state] || "#e8f4f8",
-              weight: 1.5,
-            }}
-          >
-            <Popup>
-              <div style={{ fontFamily: "var(--font-mono)", color: "#04060a" }}>
-                <strong>{p.display_name}</strong>
-                <br />
-                state: {p.atom_state}
-              </div>
-            </Popup>
-          </CircleMarker>
-        ))}
-      </MapContainer>
+      <div ref={mapContainerRef} className="w-full h-full z-0" />
 
       {/* HUD overlay */}
       <div className="fixed top-4 left-4 z-[1000]" style={{ fontFamily: "var(--font-display)" }}>
@@ -171,7 +188,6 @@ const MapView = () => {
 
         <div className="h-px mb-3" style={{ background: "var(--game-panel-border)" }} />
 
-        {/* Mode switch */}
         <button
           onClick={() => navigate("/")}
           className="w-full text-[10px] font-bold tracking-wider py-2 rounded transition-all"
