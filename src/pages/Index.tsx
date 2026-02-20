@@ -13,58 +13,149 @@ import { drawWorldMap } from "@/lib/worldmap";
 import { createAtom, exciteAtom, checkEntanglement, updateAtomTimers } from "@/lib/atoms";
 import {
   drawStarfield,
+  drawGrid,
   drawConnectionLines,
   drawOrbitRings,
   drawBlockadeZone,
   drawAtom,
   drawCrosshair,
+  drawExcitationFlash,
+  drawEntangleFlash,
 } from "@/lib/render";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { useBroadcast } from "@/hooks/useBroadcast";
 import { useGhostAtoms } from "@/hooks/useGhostAtoms";
+import OnboardingOverlay from "@/components/OnboardingOverlay";
 import ParamsPanel from "@/components/ParamsPanel";
 import StatusHUD from "@/components/StatusHUD";
 import InfoPopup, { type PopupType } from "@/components/InfoPopup";
 import InfoCard from "@/components/InfoCard";
+import EventFeed, { type GameEvent, createEvent } from "@/components/EventFeed";
 
-type IntroPhase = "locating" | "trapped" | "deploy" | "ready";
+type IntroPhase = "loading" | "locating" | "trapped" | "deploy" | "ready";
+
+// Simple sound effects via Web Audio
+function playExciteSound() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(200, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.15);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.15);
+  } catch {}
+}
+
+function playEntangleSound() {
+  try {
+    const ctx = new AudioContext();
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+    osc1.type = "sine";
+    osc2.type = "sine";
+    osc1.frequency.value = 300;
+    osc2.frequency.value = 450;
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.2);
+    osc1.start();
+    osc2.start();
+    osc1.stop(ctx.currentTime + 0.2);
+    osc2.stop(ctx.currentTime + 0.2);
+  } catch {}
+}
 
 const Index = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const [params, setParams] = useState<GameParams>(DEFAULT_PARAMS);
   const [popup, setPopup] = useState<PopupType>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [atomCount, setAtomCount] = useState(1);
   const [nearbyLinks, setNearbyLinks] = useState(0);
+  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [events, setEvents] = useState<GameEvent[]>([]);
+  const [loadingText, setLoadingText] = useState("initializing optical trap...");
 
-  // Persisted "first time" flags
   const shownPopups = useRef<Set<string>>(new Set());
-
   const myId = useMemo(() => `user-${Math.random().toString(36).slice(2, 8)}`, []);
   const geo = useGeolocation();
   const ghosts = useGhostAtoms();
 
-  // Mutable refs for animation loop
+  // Mutable refs
   const mouseRef = useRef({ x: 0, y: 0 });
   const userAtomRef = useRef<Atom | null>(null);
   const peerAtomsRef = useRef<Map<string, Atom>>(new Map());
-  const introPhaseRef = useRef<IntroPhase>("locating");
-  const introStartRef = useRef(Date.now());
+  const introPhaseRef = useRef<IntroPhase>("loading");
+  const introStartRef = useRef(0);
   const starsRef = useRef<{ x: number; y: number }[]>([]);
   const paramsRef = useRef(params);
   paramsRef.current = params;
+  const gameStartedRef = useRef(false);
 
-  // For HUD reactivity
-  const userAtomStateRef = useRef<Atom | null>(null);
+  // Flash state
+  const exciteFlashRef = useRef({ active: false, progress: 0, x: 0, y: 0 });
+  const entangleFlashRef = useRef({ active: false, progress: 0 });
+  const shakeRef = useRef({ active: false, elapsed: 0 });
+  const flashScaleRef = useRef(1);
+
+  // Events ref for animation loop
+  const eventsRef = useRef<GameEvent[]>([]);
+  const addEvent = useCallback((text: string, type: GameEvent["type"]) => {
+    const ev = createEvent(text, type);
+    eventsRef.current = [...eventsRef.current.slice(-5), ev];
+    setEvents([...eventsRef.current]);
+  }, []);
+
   const [hudAtom, setHudAtom] = useState<Atom | null>(null);
 
   // Generate stars once
   useEffect(() => {
-    starsRef.current = Array.from({ length: 80 }, () => ({
+    starsRef.current = Array.from({ length: 100 }, () => ({
       x: Math.random(),
       y: Math.random(),
     }));
   }, []);
+
+  // Loading text sequence
+  useEffect(() => {
+    const t1 = setTimeout(() => setLoadingText("locating your atom..."), 800);
+    const t2 = setTimeout(() => setLoadingText("calibrating lasers..."), 1400);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []);
+
+  // Excitation handler
+  const doExcite = useCallback(() => {
+    const atom = userAtomRef.current;
+    if (!atom || atom.state !== "ground" || introPhaseRef.current !== "ready") return;
+
+    userAtomRef.current = exciteAtom(atom, paramsRef.current);
+    playExciteSound();
+
+    // Flash effect
+    exciteFlashRef.current = { active: true, progress: 0, x: atom.x, y: atom.y };
+    flashScaleRef.current = 2;
+
+    // Screen shake
+    shakeRef.current = { active: true, elapsed: 0 };
+
+    addEvent("⚡ you entered rydberg state", "rydberg");
+
+    if (!shownPopups.current.has("excite")) {
+      shownPopups.current.add("excite");
+      setPopup("excite");
+    }
+  }, [addEvent]);
 
   // Broadcast handlers
   const onPeerUpdate = useCallback((msg: BroadcastMessage) => {
@@ -91,36 +182,23 @@ const Index = () => {
   // Keyboard handler
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "e" || e.key === "E") {
-        const atom = userAtomRef.current;
-        if (atom && atom.state === "ground" && introPhaseRef.current === "ready") {
-          userAtomRef.current = exciteAtom(atom, paramsRef.current);
-          if (!shownPopups.current.has("excite")) {
-            shownPopups.current.add("excite");
-            setPopup("excite");
-          }
-        }
-      }
+      if (e.key === "e" || e.key === "E") doExcite();
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
+  }, [doExcite]);
+
+  // Start game after onboarding
+  const handleStartGame = useCallback(() => {
+    setShowOnboarding(false);
+    setGameStarted(true);
+    gameStartedRef.current = true;
+    introPhaseRef.current = "locating";
+    introStartRef.current = Date.now();
   }, []);
 
-  // Click handler — excite on click
-  useEffect(() => {
-    const handleClick = () => {
-      const atom = userAtomRef.current;
-      if (atom && atom.state === "ground" && introPhaseRef.current === "ready") {
-        userAtomRef.current = exciteAtom(atom, paramsRef.current);
-        if (!shownPopups.current.has("excite")) {
-          shownPopups.current.add("excite");
-          setPopup("excite");
-        }
-      }
-    };
-    window.addEventListener("click", handleClick);
-    return () => window.removeEventListener("click", handleClick);
-  }, []);
+  // Track previous ghost states for event feed
+  const prevGhostStatesRef = useRef<Map<string, string>>(new Map());
 
   // Main animation loop
   useEffect(() => {
@@ -140,21 +218,18 @@ const Index = () => {
       canvas.style.width = window.innerWidth + "px";
       canvas.style.height = window.innerHeight + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      // Reposition ghosts
       ghosts.repositionAll(window.innerWidth, window.innerHeight);
     };
 
     resize();
     window.addEventListener("resize", resize);
 
-    // Mouse tracking
     const onMouseMove = (e: MouseEvent) => {
       mouseRef.current = { x: e.clientX, y: e.clientY };
     };
     window.addEventListener("mousemove", onMouseMove);
 
-    // Wait for geolocation then init
+    // Wait for geo then init user atom
     const waitForGeo = setInterval(() => {
       if (geo.loading) return;
       clearInterval(waitForGeo);
@@ -163,9 +238,7 @@ const Index = () => {
       const atom = createAtom(myId, window.innerWidth / 2, window.innerHeight / 2, geo.lat, geo.lon, geo.label, true);
       userAtomRef.current = atom;
       mouseRef.current = { x: pos.x, y: pos.y };
-
       ghosts.init(window.innerWidth, window.innerHeight);
-      introStartRef.current = Date.now();
     }, 100);
 
     const animate = (timestamp: number) => {
@@ -177,7 +250,12 @@ const Index = () => {
       const H = window.innerHeight;
       const p = paramsRef.current;
 
-      ctx.clearRect(0, 0, W, H);
+      // Background
+      ctx.fillStyle = "#04060a";
+      ctx.fillRect(0, 0, W, H);
+
+      // Grid
+      drawGrid(ctx, W, H);
 
       // Stars
       drawStarfield(ctx, starsRef.current, W, H);
@@ -191,96 +269,134 @@ const Index = () => {
         return;
       }
 
+      if (!gameStartedRef.current) {
+        // Pre-onboarding: just draw idle user atom at center
+        user.x = W / 2;
+        user.y = H / 2;
+        user.orbitAngle += 0.02;
+        drawAtom(ctx, user, p, t);
+        animFrame = requestAnimationFrame(animate);
+        return;
+      }
+
       // Intro phases
       const elapsed = Date.now() - introStartRef.current;
       const phase = introPhaseRef.current;
 
-      if (phase === "locating" && elapsed > 2000) {
-        introPhaseRef.current = "trapped";
-      } else if (phase === "trapped" && elapsed > 3500) {
-        introPhaseRef.current = "deploy";
-      } else if (phase === "deploy" && elapsed > 5000) {
-        introPhaseRef.current = "ready";
-      }
+      if (phase === "locating" && elapsed > 2000) introPhaseRef.current = "trapped";
+      else if (phase === "trapped" && elapsed > 3500) introPhaseRef.current = "deploy";
+      else if (phase === "deploy" && elapsed > 5000) introPhaseRef.current = "ready";
 
       const currentPhase = introPhaseRef.current;
 
-      // Intro: spin freely during locating
       if (currentPhase === "locating") {
-        user.orbitAngle += 0.05; // fast spin
+        user.orbitAngle += 0.05;
         user.x = W / 2;
         user.y = H / 2;
       } else if (currentPhase === "trapped") {
         user.x = W / 2;
         user.y = H / 2;
-        // Stop spinning, show orbit rings
       } else if (currentPhase === "deploy") {
-        // Lerp to geo position
         const targetPos = latLonToXY(user.lat, user.lon, W, H);
         const progress = Math.min((elapsed - 3500) / 1500, 1);
-        const ease = 1 - Math.pow(1 - progress, 4); // easeOutQuart
+        const ease = 1 - Math.pow(1 - progress, 4);
         user.x = W / 2 + (targetPos.x - W / 2) * ease;
         user.y = H / 2 + (targetPos.y - H / 2) * ease;
       } else {
-        // Ready — follow mouse with lerp
         user.x += (mouseRef.current.x - user.x) * 0.08;
         user.y += (mouseRef.current.y - user.y) * 0.08;
-        // Clamp
         user.x = Math.max(40, Math.min(W - 40, user.x));
         user.y = Math.max(40, Math.min(H - 40, user.y));
       }
 
-      // Thermal noise (1px wiggle)
+      // Thermal noise
       if (currentPhase !== "locating") {
         user.x += (Math.random() - 0.5) * 0.6;
         user.y += (Math.random() - 0.5) * 0.6;
       }
 
-      // Update ghost atoms
+      // Flash scale decay
+      flashScaleRef.current += (1 - flashScaleRef.current) * 0.1;
+
+      // Excite flash animation
+      if (exciteFlashRef.current.active) {
+        exciteFlashRef.current.progress += dt / 300;
+        if (exciteFlashRef.current.progress >= 1) exciteFlashRef.current.active = false;
+      }
+
+      // Entangle flash animation
+      if (entangleFlashRef.current.active) {
+        entangleFlashRef.current.progress += dt / 400;
+        if (entangleFlashRef.current.progress >= 1) entangleFlashRef.current.active = false;
+      }
+
+      // Screen shake
+      if (shakeRef.current.active) {
+        shakeRef.current.elapsed += dt;
+        if (shakeRef.current.elapsed > 200) {
+          shakeRef.current.active = false;
+          if (wrapperRef.current) wrapperRef.current.style.transform = "";
+        } else {
+          const amp = 3 * (1 - shakeRef.current.elapsed / 200);
+          const sx = Math.sin(shakeRef.current.elapsed * 0.1) * amp;
+          const sy = Math.cos(shakeRef.current.elapsed * 0.13) * amp;
+          if (wrapperRef.current) wrapperRef.current.style.transform = `translate(${sx}px, ${sy}px)`;
+        }
+      }
+
+      // Ghost atoms
       let ghostAtoms: Atom[] = [];
       if (p.ghostsEnabled) {
         ghostAtoms = ghosts.update(dt, p, t);
-      }
 
-      // Peer atoms
-      const peerAtoms = Array.from(peerAtomsRef.current.values());
-
-      // All atoms
-      let allAtoms = [user, ...ghostAtoms, ...peerAtoms];
-
-      // Update timers
-      allAtoms = updateAtomTimers(allAtoms, dt, p);
-      // Apply back to user
-      const updatedUser = allAtoms[0];
-      userAtomRef.current = updatedUser;
-
-      // Check entanglement
-      allAtoms = checkEntanglement(allAtoms, p);
-      userAtomRef.current = allAtoms[0];
-
-      // Check if user just entangled
-      if (
-        allAtoms[0].state === "entangled" &&
-        !shownPopups.current.has("entangle")
-      ) {
-        shownPopups.current.add("entangle");
-        setPopup("entangle");
-      }
-
-      // Count nearby links
-      let links = 0;
-      for (let i = 1; i < allAtoms.length; i++) {
-        if (
-          pixelDistance(allAtoms[0].x, allAtoms[0].y, allAtoms[i].x, allAtoms[i].y) <
-          p.connectionThreshold
-        ) {
-          if (allAtoms[0].state !== "ground" && allAtoms[i].state !== "ground") {
-            links++;
+        // Event feed for ghost state changes
+        for (const g of ghostAtoms) {
+          const prev = prevGhostStatesRef.current.get(g.id);
+          if (prev !== g.state) {
+            if (g.state === "rydberg") addEvent(`⚡ ${g.label} entered rydberg state`, "rydberg");
+            else if (g.state === "entangled") addEvent(`🔴 ${g.label} became entangled`, "entangle");
+            else if (prev === "rydberg" || prev === "entangled") addEvent(`○ ${g.label} returned to ground`, "decay");
+            prevGhostStatesRef.current.set(g.id, g.state);
           }
         }
       }
 
-      // Draw layers
+      const peerAtoms = Array.from(peerAtomsRef.current.values());
+      let allAtoms = [user, ...ghostAtoms, ...peerAtoms];
+
+      allAtoms = updateAtomTimers(allAtoms, dt, p);
+      userAtomRef.current = allAtoms[0];
+
+      // Check entanglement
+      const prevUserState = allAtoms[0].state;
+      allAtoms = checkEntanglement(allAtoms, p);
+      userAtomRef.current = allAtoms[0];
+
+      if (allAtoms[0].state === "entangled" && prevUserState !== "entangled") {
+        playEntangleSound();
+        entangleFlashRef.current = { active: true, progress: 0 };
+        addEvent("🔴 you became entangled!", "entangle");
+        if (!shownPopups.current.has("entangle")) {
+          shownPopups.current.add("entangle");
+          setPopup("entangle");
+        }
+      }
+
+      // Count links
+      let links = 0;
+      for (let i = 1; i < allAtoms.length; i++) {
+        if (pixelDistance(allAtoms[0].x, allAtoms[0].y, allAtoms[i].x, allAtoms[i].y) < p.connectionThreshold) {
+          if (allAtoms[0].state !== "ground" && allAtoms[i].state !== "ground") links++;
+        }
+      }
+
+      // === DRAW LAYERS ===
+
+      // Entangle screen flash
+      if (entangleFlashRef.current.active) {
+        drawEntangleFlash(ctx, W, H, entangleFlashRef.current.progress);
+      }
+
       // Layer 0: connections
       if (currentPhase === "ready" || currentPhase === "deploy") {
         drawConnectionLines(ctx, allAtoms, p, t);
@@ -296,35 +412,49 @@ const Index = () => {
 
       // Layer 2: atoms
       for (const atom of allAtoms) {
-        drawAtom(ctx, atom, p, t);
+        const scale = atom.isUser ? flashScaleRef.current : 1;
+        drawAtom(ctx, atom, p, t, scale);
       }
 
-      // Layer 3: crosshair on user
+      // Layer 3: crosshair
       if (currentPhase !== "locating") {
-        drawCrosshair(ctx, allAtoms[0], p.crosshairStyle);
+        drawCrosshair(ctx, allAtoms[0], p.crosshairStyle, t);
+      }
+
+      // Excitation flash
+      if (exciteFlashRef.current.active) {
+        drawExcitationFlash(ctx, exciteFlashRef.current.x, exciteFlashRef.current.y, exciteFlashRef.current.progress);
       }
 
       // Layer 4: intro text
       ctx.save();
-      ctx.font = "11px 'JetBrains Mono', monospace";
+      ctx.font = "12px 'Space Mono', monospace";
       ctx.textAlign = "center";
 
       if (currentPhase === "locating") {
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        ctx.fillText("locating...", W / 2, H / 2 + 60);
+        ctx.fillStyle = "rgba(232,244,248,0.5)";
+        ctx.fillText("locating...", W / 2, H / 2 + 65);
       } else if (currentPhase === "trapped") {
-        ctx.fillStyle = "rgba(255,255,255,0.6)";
-        ctx.fillText("this atom is now yours", W / 2, H / 2 + 60);
+        ctx.fillStyle = "rgba(0,212,255,0.7)";
+        ctx.fillText("this atom is now yours", W / 2, H / 2 + 65);
       } else if (currentPhase === "deploy") {
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        ctx.fillText("press E or click to excite", W / 2, H - 40);
+        ctx.fillStyle = "rgba(232,244,248,0.5)";
+        ctx.fillText("press E or click to excite", W / 2, H - 50);
       }
       ctx.restore();
 
-      // Broadcast user state
+      // "YOU" label (brief)
+      if (currentPhase === "trapped" || (currentPhase === "deploy" && elapsed < 6000)) {
+        ctx.save();
+        ctx.fillStyle = "rgba(255,215,0,0.7)";
+        ctx.font = "10px 'Space Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("YOU", allAtoms[0].x, allAtoms[0].y - 22);
+        ctx.restore();
+      }
+
       broadcast(allAtoms[0]);
 
-      // Update HUD state (throttled)
       if (t % 6 === 0) {
         setAtomCount(allAtoms.length);
         setNearbyLinks(links);
@@ -342,25 +472,44 @@ const Index = () => {
       window.removeEventListener("resize", resize);
       window.removeEventListener("mousemove", onMouseMove);
     };
-  }, [myId, geo, ghosts, broadcast]);
+  }, [myId, geo, ghosts, broadcast, addEvent]);
 
   return (
-    <div className="w-screen h-screen overflow-hidden bg-black cursor-none">
-      <canvas
-        ref={canvasRef}
-        className="block w-full h-full"
-      />
+    <div
+      ref={wrapperRef}
+      className="w-screen h-screen overflow-hidden cursor-none"
+      style={{ background: "#04060a" }}
+    >
+      <canvas ref={canvasRef} className="block w-full h-full" />
 
-      <ParamsPanel params={params} setParams={setParams} />
-      <StatusHUD userAtom={hudAtom} atomCount={atomCount} nearbyLinks={nearbyLinks} />
+      {/* Onboarding */}
+      {showOnboarding && <OnboardingOverlay onStart={handleStartGame} />}
 
-      <InfoPopup type={popup} onDismiss={() => setPopup(null)} />
-      <InfoCard open={infoOpen} onClose={() => setInfoOpen(false)} />
+      {/* UI overlays — only show after game starts */}
+      {gameStarted && (
+        <>
+          <ParamsPanel params={params} setParams={setParams} />
+          <StatusHUD userAtom={hudAtom} atomCount={atomCount} nearbyLinks={nearbyLinks} onExcite={doExcite} />
+          <EventFeed events={events} />
 
-      {/* Room code */}
-      <div className="fixed top-4 left-4 z-50 font-mono text-[10px] text-white/20">
-        rydberg-room://local
-      </div>
+          <InfoPopup type={popup} onDismiss={() => setPopup(null)} onLearnMore={() => setInfoOpen(true)} />
+          <InfoCard open={infoOpen} onClose={() => setInfoOpen(false)} />
+
+          {/* Room info */}
+          <div className="fixed top-4 left-4 z-50" style={{ fontFamily: "var(--font-display)" }}>
+            <div className="text-[11px] font-bold tracking-wider" style={{ color: "var(--game-dim)" }}>
+              THE RYDBERG ROOM
+              <span className="ml-2 font-normal" style={{ color: "rgba(58,80,104,0.5)" }}>
+                · experiment #0047
+              </span>
+            </div>
+            <div className="h-px my-1 w-48" style={{ background: "var(--game-panel-border)" }} />
+            <div className="text-[9px]" style={{ color: "rgba(58,80,104,0.5)" }}>
+              room: rydberg-room://local · mode: {Array.from(peerAtomsRef.current.keys()).length > 0 ? "multi-tab" : "single-tab demo"}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

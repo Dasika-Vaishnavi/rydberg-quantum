@@ -75,10 +75,10 @@ export function drawWorldMap(
       else ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.fillStyle = "rgba(255,255,255,0.03)";
+    ctx.fillStyle = "rgba(232,244,248,0.04)";
     ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.06)";
-    ctx.lineWidth = 0.5;
+    ctx.strokeStyle = "rgba(232,244,248,0.1)";
+    ctx.lineWidth = 0.8;
     ctx.stroke();
   }
   ctx.restore();

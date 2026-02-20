@@ -2,50 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
 
 @layer base {
   :root {
-    --background: 0 0% 0%;
-    --foreground: 0 0% 100%;
+    --background: 214 40% 3%;
+    --foreground: 195 40% 93%;
 
-    --card: 0 0% 5%;
-    --card-foreground: 0 0% 100%;
+    --card: 214 35% 5%;
+    --card-foreground: 195 40% 93%;
 
-    --popover: 0 0% 5%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 214 35% 5%;
+    --popover-foreground: 195 40% 93%;
 
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 190 100% 50%;
+    --primary-foreground: 214 40% 3%;
 
-    --secondary: 0 0% 8%;
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 214 25% 8%;
+    --secondary-foreground: 195 40% 93%;
 
-    --muted: 0 0% 8%;
-    --muted-foreground: 0 0% 55%;
+    --muted: 214 25% 8%;
+    --muted-foreground: 207 20% 32%;
 
-    --accent: 0 84% 60%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 342 100% 60%;
+    --accent-foreground: 195 40% 93%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 342 100% 60%;
+    --destructive-foreground: 195 40% 93%;
 
-    --border: 0 0% 15%;
-    --input: 0 0% 15%;
-    --ring: 217 91% 60%;
+    --border: 207 25% 16%;
+    --input: 207 25% 16%;
+    --ring: 190 100% 50%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 3%;
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 10%;
-    --sidebar-accent-foreground: 0 0% 90%;
-    --sidebar-border: 0 0% 12%;
-    --sidebar-ring: 217 91% 60%;
+    /* Game-specific tokens */
+    --game-bg: #04060a;
+    --game-bg2: #080d14;
+    --game-grid: #0d1520;
+    --game-white: #e8f4f8;
+    --game-dim: #3a5068;
+    --game-cyan: #00d4ff;
+    --game-red: #ff3366;
+    --game-green: #00ff88;
+    --game-gold: #ffd700;
+    --game-panel-border: #1a2d3d;
+    --game-glow-cyan: rgba(0,212,255,0.15);
+    --game-glow-red: rgba(255,51,102,0.15);
 
-    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sidebar-background: 214 35% 3%;
+    --sidebar-foreground: 195 40% 90%;
+    --sidebar-primary: 190 100% 50%;
+    --sidebar-primary-foreground: 214 40% 3%;
+    --sidebar-accent: 214 25% 10%;
+    --sidebar-accent-foreground: 195 40% 90%;
+    --sidebar-border: 207 25% 14%;
+    --sidebar-ring: 190 100% 50%;
+
+    --font-mono: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+    --font-display: 'Space Mono', 'Courier New', monospace;
   }
 
   .dark {
@@ -64,6 +79,7 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
+    background: var(--game-bg);
   }
 }
 
@@ -73,7 +89,43 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
+  @keyframes fade-in-down {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes pulse-border {
+    0%, 100% { border-color: var(--game-cyan); box-shadow: 0 0 12px rgba(0,212,255,0.15); }
+    50% { border-color: rgba(0,212,255,0.5); box-shadow: 0 0 20px rgba(0,212,255,0.25); }
+  }
+
+  @keyframes pulse-red {
+    0%, 100% { border-color: var(--game-red); box-shadow: 0 0 12px rgba(255,51,102,0.15); }
+    50% { border-color: rgba(255,51,102,0.5); box-shadow: 0 0 20px rgba(255,51,102,0.25); }
+  }
+
   .animate-fade-in {
     animation: fade-in 0.3s ease-out;
+  }
+
+  .animate-fade-in-down {
+    animation: fade-in-down 0.2s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.4s ease-out;
+  }
+
+  .animate-pulse-cyan {
+    animation: pulse-border 2s ease-in-out infinite;
+  }
+
+  .animate-pulse-red {
+    animation: pulse-red 1.5s ease-in-out infinite;
   }
 }
