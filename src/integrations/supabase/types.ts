@@ -14,7 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      players: {
+        Row: {
+          atom_state: string
+          created_at: string
+          display_name: string
+          id: string
+          last_seen: string
+          lat: number
+          lon: number
+          session_id: string
+        }
+        Insert: {
+          atom_state?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          last_seen?: string
+          lat?: number
+          lon?: number
+          session_id: string
+        }
+        Update: {
+          atom_state?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          last_seen?: string
+          lat?: number
+          lon?: number
+          session_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
