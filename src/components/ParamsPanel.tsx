@@ -15,121 +15,88 @@ export default function ParamsPanel({ params, setParams }: Props) {
 
   return (
     <div
-      className="fixed top-4 right-4 z-50 font-mono text-[11px]"
-      style={{ color: "#fff" }}
+      className="fixed top-4 right-4 z-50"
+      style={{ fontFamily: "var(--font-mono)" }}
     >
-      <button
+      {/* Compact summary bar */}
+      <div
+        className="flex items-center gap-3 px-3 py-2 rounded-lg text-[10px] cursor-pointer transition-all hover:border-[var(--game-cyan)]"
+        style={{
+          background: "rgba(4,6,10,0.9)",
+          border: "1px solid var(--game-panel-border)",
+          backdropFilter: "blur(8px)",
+          color: "var(--game-dim)",
+        }}
         onClick={() => setOpen(!open)}
-        className="px-2 py-1 border border-white/10 rounded bg-black/80 hover:bg-white/5 transition-colors"
       >
-        {open ? "⚙ params [ − ]" : "⚙ params"}
-      </button>
+        <span style={{ color: "var(--game-white)" }}>⚙</span>
+        <span>blockade: {params.blockadeRadius}px</span>
+        <span>·</span>
+        <span>decay: {(params.rydbergDuration / 1000).toFixed(0)}s</span>
+        <span>·</span>
+        <span>glow: {params.glowIntensity.toFixed(1)}</span>
+        <span
+          className="ml-1"
+          style={{ color: "var(--game-cyan)" }}
+        >
+          [{open ? "−" : "+"}]
+        </span>
+      </div>
 
       {open && (
         <div
-          className="mt-2 w-52 rounded border border-white/10 p-3 space-y-3"
-          style={{ background: "rgba(0,0,0,0.9)" }}
+          className="mt-2 w-[240px] rounded-lg p-4 space-y-4 animate-fade-in"
+          style={{
+            background: "rgba(4,6,10,0.95)",
+            border: "1px solid var(--game-panel-border)",
+            backdropFilter: "blur(8px)",
+          }}
         >
-          <div className="text-[10px] text-white/40 uppercase tracking-widest">
-            quantum params
+          <div className="flex items-center justify-between">
+            <span
+              className="text-[10px] font-bold tracking-[0.15em]"
+              style={{ color: "var(--game-white)", fontFamily: "var(--font-display)" }}
+            >
+              ⚙ QUANTUM PARAMS
+            </span>
+            <button
+              onClick={() => setOpen(false)}
+              className="text-[11px] transition-colors"
+              style={{ color: "var(--game-dim)" }}
+            >
+              [−]
+            </button>
           </div>
 
-          <Slider
-            label="rydberg duration"
-            value={params.rydbergDuration}
-            min={1000}
-            max={10000}
-            step={500}
-            display={`${params.rydbergDuration}ms`}
-            onChange={(v) => update("rydbergDuration", v)}
-          />
-          <Slider
-            label="entangle duration"
-            value={params.entangleDuration}
-            min={1000}
-            max={10000}
-            step={500}
-            display={`${params.entangleDuration}ms`}
-            onChange={(v) => update("entangleDuration", v)}
-          />
-          <Slider
-            label="orbit radius"
-            value={params.orbitRadius}
-            min={20}
-            max={120}
-            step={5}
-            display={`${params.orbitRadius}px`}
-            onChange={(v) => update("orbitRadius", v)}
-          />
-          <Slider
-            label="connection threshold"
-            value={params.connectionThreshold}
-            min={40}
-            max={300}
-            step={10}
-            display={`${params.connectionThreshold}px`}
-            onChange={(v) => update("connectionThreshold", v)}
-          />
-          <Slider
-            label="glow intensity"
-            value={params.glowIntensity}
-            min={0.1}
-            max={1.0}
-            step={0.05}
-            display={params.glowIntensity.toFixed(2)}
-            onChange={(v) => update("glowIntensity", v)}
-          />
-          <Slider
-            label="decay speed"
-            value={params.decaySpeed}
-            min={0.1}
-            max={3.0}
-            step={0.1}
-            display={`${params.decaySpeed.toFixed(1)}x`}
-            onChange={(v) => update("decaySpeed", v)}
-          />
+          <div className="h-px" style={{ background: "var(--game-panel-border)" }} />
 
-          <div className="flex justify-between items-center pt-1 border-t border-white/10">
-            <span className="text-white/50">ghost atoms</span>
-            <div className="flex gap-1">
-              <button
-                onClick={() => update("ghostsEnabled", true)}
-                className={`px-2 py-0.5 rounded text-[10px] ${
-                  params.ghostsEnabled ? "bg-white/20 text-white" : "text-white/30"
-                }`}
-              >
-                ON
-              </button>
-              <button
-                onClick={() => update("ghostsEnabled", false)}
-                className={`px-2 py-0.5 rounded text-[10px] ${
-                  !params.ghostsEnabled ? "bg-white/20 text-white" : "text-white/30"
-                }`}
-              >
-                OFF
-              </button>
-            </div>
-          </div>
+          <PSlider label="rydberg duration" value={params.rydbergDuration} min={1000} max={10000} step={500}
+            display={`${(params.rydbergDuration/1000).toFixed(1)}s`} onChange={v => update("rydbergDuration", v)} />
+          <PSlider label="blockade radius" value={params.blockadeRadius} min={20} max={120} step={5}
+            display={`${params.blockadeRadius}px`} onChange={v => update("blockadeRadius", v)} />
+          <PSlider label="connection range" value={params.connectionThreshold} min={40} max={300} step={10}
+            display={`${params.connectionThreshold}px`} onChange={v => update("connectionThreshold", v)} />
+          <PSlider label="glow intensity" value={params.glowIntensity} min={0.1} max={1.0} step={0.05}
+            display={params.glowIntensity.toFixed(2)} onChange={v => update("glowIntensity", v)} />
+          <PSlider label="decay speed" value={params.decaySpeed} min={0.1} max={3.0} step={0.1}
+            display={`${params.decaySpeed.toFixed(1)}×`} onChange={v => update("decaySpeed", v)} />
 
-          <div className="flex justify-between items-center">
-            <span className="text-white/50">crosshair</span>
+          <div className="flex justify-between items-center pt-2 border-t" style={{ borderColor: "var(--game-panel-border)" }}>
+            <span className="text-[10px]" style={{ color: "var(--game-dim)" }}>ghost atoms</span>
             <div className="flex gap-1">
-              <button
-                onClick={() => update("crosshairStyle", "laser")}
-                className={`px-2 py-0.5 rounded text-[10px] ${
-                  params.crosshairStyle === "laser" ? "bg-white/20 text-white" : "text-white/30"
-                }`}
-              >
-                laser
-              </button>
-              <button
-                onClick={() => update("crosshairStyle", "dot")}
-                className={`px-2 py-0.5 rounded text-[10px] ${
-                  params.crosshairStyle === "dot" ? "bg-white/20 text-white" : "text-white/30"
-                }`}
-              >
-                dot
-              </button>
+              {[true, false].map(val => (
+                <button
+                  key={String(val)}
+                  onClick={() => update("ghostsEnabled", val)}
+                  className="px-2 py-0.5 rounded text-[10px] transition-colors"
+                  style={{
+                    color: params.ghostsEnabled === val ? "var(--game-white)" : "var(--game-dim)",
+                    background: params.ghostsEnabled === val ? "rgba(255,255,255,0.1)" : "transparent",
+                  }}
+                >
+                  {val ? "ON" : "OFF"}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -138,39 +105,27 @@ export default function ParamsPanel({ params, setParams }: Props) {
   );
 }
 
-function Slider({
-  label,
-  value,
-  min,
-  max,
-  step,
-  display,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  display: string;
-  onChange: (v: number) => void;
+function PSlider({ label, value, min, max, step, display, onChange }: {
+  label: string; value: number; min: number; max: number; step: number; display: string; onChange: (v: number) => void;
 }) {
+  const percent = ((value - min) / (max - min)) * 100;
   return (
-    <div className="space-y-0.5">
-      <div className="flex justify-between text-white/50">
-        <span>{label}</span>
-        <span className="text-white/70">{display}</span>
+    <div className="space-y-1">
+      <div className="flex justify-between text-[10px]">
+        <span style={{ color: "var(--game-dim)" }}>{label}</span>
+        <span style={{ color: "var(--game-cyan)" }}>{display}</span>
       </div>
       <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-1 appearance-none bg-white/10 rounded cursor-pointer
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        className="w-full h-[2px] appearance-none rounded cursor-pointer
           [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3
-          [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+          [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0"
+        style={{
+          background: `linear-gradient(to right, var(--game-cyan) 0%, var(--game-cyan) ${percent}%, var(--game-panel-border) ${percent}%, var(--game-panel-border) 100%)`,
+          // @ts-ignore
+          '--webkit-slider-thumb-bg': 'var(--game-cyan)',
+        }}
       />
     </div>
   );
